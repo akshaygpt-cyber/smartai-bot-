@@ -20,7 +20,6 @@ def webhook():
         user_message = data["message"]["text"]
 
         reply = generate_reply(user_message)
-
         send_message(chat_id, reply)
 
     return "OK", 200
@@ -38,7 +37,7 @@ def generate_reply(prompt):
         ]
     }
     response = requests.post("https://api.groq.com/openai/chat/completions", headers=headers, json=json_data)
-    
+
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]
     else:
@@ -51,5 +50,3 @@ def send_message(chat_id, text):
         "text": text
     }
     requests.post(url, json=payload)
-
-# NO app.run() here - Render will use gunicorn
