@@ -1,48 +1,55 @@
-import os
 from flask import Flask, request
 import requests
+import os
 
 app = Flask(__name__)
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = "mixtral-8x7b-32768"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-
-@app.route('/')
+@app.route("/")
 def home():
-    return 'SmartAI Bot is Live!'
+    return "SmartAI is Running!"
 
-@app.route('/webhook', methods=['POST'])
+@app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    if 'message' in data and 'text' in data['message']:
-        chat_id = data['message']['chat']['id']
-        user_message = data['message']['text']
 
-        ai_reply = get_groq_reply(user_message)
+    if "message" in data and "text" in data["message"]:
+        chat_id = data["message"]["chat"]["id"]
+        user_message = data["message"]["text"]
 
-        reply_payload = {'chat_id': chat_id, 'text': ai_reply}
-        requests.post(TELEGRAM_URL, json=reply_payload)
-    return 'OK'
+        reply = generate_reply(user_message)
 
-def get_groq_reply(user_message):
-    url = "https://api.groq.com/openai/v1/chat/completions"
+        send_message(chat_id, reply)
+
+    return "OK", 200
+
+def generate_reply(prompt):
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    body = {
-        "model": GROQ_MODEL,
-        "messages": [{"role": "user", "content": user_message}],
-        "temperature": 0.7
+    json_data = {
+        "model": "mixtral-8x7b-32768",
+        "messages": [
+            {"role": "system", "content": "You are a helpful AI Assistant that replies in English, Hindi or Marathi depending on user language."},
+            {"role": "user", "content": prompt}
+        ]
     }
-    response = requests.post(url, headers=headers, json=body)
-    try:
-        return response.json()["choices"][0]["message"]["content"].strip()
-    except:
-        return "क्षमस्व, काही त्रुटी आली. कृपया पुन्हा प्रयत्न करा."
+    response = requests.post("https://api.groq.com/openai/chat/completions", headers=headers, json=json_data)
+    
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"]
+    else:
+        return "Sorry, I couldn't generate a response."
 
-if __name__ == "__main__":
-    app.run(debug=True)
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
+    requests.post(url, json=payload)
+
+# NO app.run() here - Render will use gunicorn
