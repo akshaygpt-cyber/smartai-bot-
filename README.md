@@ -18,3 +18,6 @@ Built by Akshay 🙌
 🤖 Telegram Bot: [@SmartAIBot](https://t.me/SmartAIBot)  
 🌐 Webhook URL: `/webhook`
 gunicorn
+Flask==2.3.2
+requests==2.31.0
+gunicorn
