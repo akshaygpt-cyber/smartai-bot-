@@ -14,3 +14,6 @@ This is a multilingual AI chatbot (Marathi, Hindi, English) powered by Groq's Mi
 3. Set webhook using Telegram Bot API
 
 Built by Akshay 🙌
+🔗 Hosted on: https://smartai-bot.onrender.com  
+🤖 Telegram Bot: [@SmartAIBot](https://t.me/SmartAIBot)  
+🌐 Webhook URL: `/webhook`
