@@ -17,3 +17,4 @@ Built by Akshay 🙌
 🔗 Hosted on: https://smartai-bot.onrender.com  
 🤖 Telegram Bot: [@SmartAIBot](https://t.me/SmartAIBot)  
 🌐 Webhook URL: `/webhook`
+gunicorn
