@@ -37,10 +37,10 @@ def generate_reply(prompt):
     }
 
     try:
-        response = requests.post("https://api.groq.com/openai/chat/completions", headers=headers, json=json_data)
+        response = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=json_data)
         print("📩 Groq Response:", response.text)  # DEBUG
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        return response.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
         print("❌ Error:", str(e))  # DEBUG
         return "Error generating reply. 😢"
