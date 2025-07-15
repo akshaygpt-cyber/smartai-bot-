@@ -51,6 +51,12 @@ def webhook():
             "chat_id": chat_id,
             "text": reply
         }
-        requests.post(send_url, json=payload)
 
-    return "OK" 
+        try:
+            response = requests.post(send_url, json=payload)
+            print("📤 Telegram Response:", response.text)
+            response.raise_for_status()
+        except Exception as e:
+            print("❌ Telegram Error:", str(e))
+
+    return "OK"
