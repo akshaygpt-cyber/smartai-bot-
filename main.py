@@ -29,7 +29,7 @@ def generate_reply(prompt):
         "Content-Type": "application/json"
     }
     json_data = {
-        "model": "mixtral-8x7b-32768",
+        "model": "mixtral-8x7b",
         "messages": [
             {"role": "system", "content": "You are a helpful AI Assistant that replies in English, Hindi or Marathi depending on user language."},
             {"role": "user", "content": prompt}
