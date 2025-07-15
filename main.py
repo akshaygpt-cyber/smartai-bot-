@@ -1,6 +1,4 @@
 def generate_reply(prompt):
-    print("🔥 User Prompt:", prompt)  # DEBUG
-
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
@@ -13,11 +11,9 @@ def generate_reply(prompt):
         ]
     }
 
-    response = requests.post("https://api.groq.com/openai/chat/completions", headers=headers, json=json_data)
-    
-    print("📩 Groq Response:", response.text)  # DEBUG
-
-    if response.status_code == 200:
+    try:
+        response = requests.post("https://api.groq.com/openai/chat/completions", headers=headers, json=json_data)
+        response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
-    else:
-        return "Sorry, I couldn't generate a response."
+    except Exception as e:
+        return "Error generating reply. 😢"
