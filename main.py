@@ -22,6 +22,8 @@ def webhook():
     return "OK", 200
 
 def generate_reply(prompt):
+    print("🔥 User Prompt:", prompt)  # DEBUG
+
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
@@ -36,9 +38,11 @@ def generate_reply(prompt):
 
     try:
         response = requests.post("https://api.groq.com/openai/chat/completions", headers=headers, json=json_data)
+        print("📩 Groq Response:", response.text)  # DEBUG
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
-    except Exception:
+    except Exception as e:
+        print("❌ Error:", str(e))  # DEBUG
         return "Error generating reply. 😢"
 
 def send_message(chat_id, text):
