@@ -14,14 +14,18 @@ def generate_reply(prompt):
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
+
     json_data = {
         "model": "llama3-8b-8192",
         "messages": [
-            {"role": "system", "content": """
-तू एक मदत करणारा AI Chatbot आहेस. वापरकर्त्याशी त्याच्या भाषेत उत्तर दे — मराठी, हिंदी किंवा इंग्रजी.
-कृपया गोपनीयता, कायदेशीरता आणि वापरकर्त्याच्या भाषेचा आदर राख.
-"""},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a helpful and friendly AI Assistant. Automatically detect the user's language (Marathi, Hindi, or English) from their message and reply **only in that same language**. Do not mix multiple languages in your response."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
         ]
     }
 
@@ -32,11 +36,11 @@ def generate_reply(prompt):
         return response.json()["choices"][0]["message"]["content"]
     except Exception as e:
         print("❌ Error:", str(e))
-        return "Error generating reply. 😢"
+        return "उत्तर तयार करताना त्रुटी आली. कृपया पुन्हा प्रयत्न करा."
 
 @app.route("/")
 def home():
-    return "SmartAI Bot is running!"
+    return "✅ SmartAI Bot is running!"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
