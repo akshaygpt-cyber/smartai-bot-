@@ -17,7 +17,10 @@ def generate_reply(prompt):
     json_data = {
         "model": "llama3-8b-8192",
         "messages": [
-            {"role": "system", "content": "You are a helpful AI Assistant that replies in English, Hindi or Marathi depending on user language."},
+            {"role": "system", "content": """
+तू एक मदत करणारा AI Chatbot आहेस. वापरकर्त्याशी त्याच्या भाषेत उत्तर दे — मराठी, हिंदी किंवा इंग्रजी.
+कृपया गोपनीयता, कायदेशीरता आणि वापरकर्त्याच्या भाषेचा आदर राख.
+"""},
             {"role": "user", "content": prompt}
         ]
     }
