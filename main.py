@@ -14,33 +14,39 @@ def generate_reply(prompt):
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-
     json_data = {
         "model": "llama3-8b-8192",
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful and friendly AI Assistant. Automatically detect the user's language (Marathi, Hindi, or English) from their message and reply **only in that same language**. Do not mix multiple languages in your response."
+                "content": (
+                    "You are SmartAI, a helpful assistant. Reply briefly and clearly "
+                    "in the language the user uses. You support Marathi, Hindi, and English. "
+                    "Reply in the same language as the question. If the question is in Marathi, reply in Marathi. "
+                    "If in Hindi, reply in Hindi. If in English, reply in English. "
+                    "Keep responses short and helpful."
+                )
             },
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "user", "content": prompt}
         ]
     }
 
     try:
-        response = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=json_data)
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=json_data
+        )
         print("📩 Groq Response:", response.text)
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
     except Exception as e:
         print("❌ Error:", str(e))
-        return "उत्तर तयार करताना त्रुटी आली. कृपया पुन्हा प्रयत्न करा."
+        return "Sorry, I couldn't generate a reply. 😢"
 
 @app.route("/")
 def home():
-    return "✅ SmartAI Bot is running!"
+    return "SmartAI Bot is running!"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
