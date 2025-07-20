@@ -1,63 +1,34 @@
 from flask import Flask, request
 import requests
 import wikipedia
-import os
 
 app = Flask(__name__)
 
-wikipedia.set_lang("mr")  # Default: Marathi
+TELEGRAM_TOKEN = "7996807296:AAGz5O6gqJxzBgasopA7HRJ3TpZiPL1wpnk"
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+wikipedia.set_lang("en")  # default
 
-def detect_language(text):
-    if any(ch in text for ch in "अआइईउऊएऐओऔकखगघचछजझटठडढणतथदधनपफबभमयरलवशषसह"):
-        return "mr"
-    elif any(ch in text for ch in "क्या", "कैसे", "है"):
-        return "hi"
-    else:
-        return "en"
+def generate_reply(text):
+    text = text.lower()
 
-def ask_groq(message, language):
-    wikipedia.set_lang(language)
+    # Wikipedia logic
+    if any(ch in text for ch in ('मराठी', 'हिंदी', 'संस्कृत')):
+        if 'मराठी' in text:
+            wikipedia.set_lang("mr")
+            query = text.replace('मराठी', '').strip()
+        elif 'हिंदी' in text:
+            wikipedia.set_lang("hi")
+            query = text.replace('हिंदी', '').strip()
+        else:
+            wikipedia.set_lang("sa")
+            query = text.replace('संस्कृत', '').strip()
+
+        try:
+            summary = wikipedia.summary(query, sentences=2)
+            return f"📚 {query} विषयी:\n{summary}"
+        except Exception:
+            return "❌ माहिती मिळाली नाही. कृपया वेगळं keyword वापरा."
+
+    # Default English Wikipedia
     try:
-        summary = wikipedia.summary(message, sentences=2, auto_suggest=False)
-        return summary
-    except:
-        pass
-    data = {
-        "model": "llama3-8b-8192",
-        "messages": [
-            {"role": "system", "content": (
-                "You are SmartAI, a helpful and polite assistant. "
-                "Always reply strictly in the SAME language as the user's question. "
-                "Never mix languages in one reply. "
-                "Reply only in pure Marathi, pure Hindi (देवनागरी), or pure English as per the input. "
-                "Keep responses short, friendly, and helpful."
-            )},
-            {"role": "user", "content": message}
-        ],
-        "temperature": 0.7
-    }
-    response = requests.post(GROQ_API_URL,
-                             headers={"Authorization": f"Bearer {GROQ_API_KEY}",
-                                      "Content-Type": "application/json"},
-                             json=data)
-    return response.json()["choices"][0]["message"]["content"].strip()
-
-@app.route("/")
-def home():
-    return "Smart AI Bot is Running!"
-
-@app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
-def telegram_webhook():
-    msg = request.json.get("message", {}).get("text", "")
-    chat_id = request.json.get("message", {}).get("chat", {}).get("id")
-    lang = detect_language(msg)
-    reply = ask_groq(msg, lang)
-    requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-        json={"chat_id": chat_id, "text": reply}
-    )
-    return {"ok": True}
