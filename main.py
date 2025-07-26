@@ -10,6 +10,14 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 def get_groq_reply(user_message):
     print("User Message:", user_message)  # Debug
+
+    # ⚠️ Historical Topics Filter
+    historical_keywords = ["गांधी", "महात्मा गांधी", "शिवाजी", "आंबेडकर", "Tilak", "भा. रा. आंबेडकर", "Bhagat Singh"]
+    for word in historical_keywords:
+        if word.lower() in user_message.lower():
+            return "🔍 ही माहिती ऐतिहासिक व्यक्तिमत्त्वावर आधारित आहे. कृपया अधिक तपशील Wikipedia किंवा सरकारी स्रोतांवरून पाहा. तरीही मी थोडकं उत्तर देऊ शकतो, विचारू का?"
+
+    # ✅ जर historical keyword नसेल, तर Groq API ला विचार
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
