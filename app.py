@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import re
 from langdetect import detect
 from dotenv import load_dotenv
 from groq import Groq
@@ -18,6 +19,10 @@ if not TELEGRAM_TOKEN or not GROQ_API_KEY:
 client = Groq(api_key=GROQ_API_KEY)
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
+def is_math_expression(text):
+    pattern = r'^[\d\s\+\-\*\/\.\(\)]+$'
+    return re.match(pattern, text.strip())
+
 @app.route('/')
 def home():
     return '✅ Smart AI Bot is Running!'
@@ -31,32 +36,41 @@ def webhook():
 
     if 'message' in data and 'text' in data['message']:
         chat_id = data['message']['chat']['id']
-        user_message = data['message']['text']
+        user_message = data['message']['text'].strip()
 
         try:
-            lang = detect(user_message)
+            # गणिताचा प्रश्न आहे का?
+            if is_math_expression(user_message):
+                try:
+                    result = eval(user_message)
+                    bot_reply = f"उत्तर: {result}"
+                except Exception as e:
+                    bot_reply = "क्षमस्व! हे गणित मी सोडवू शकत नाही."
+            else:
+                # Groq वापर
+                lang = detect(user_message)
 
-            system_message = """
-            तू एक मदत करणारा AI आहेस जो मराठी, हिंदी आणि इंग्रजी भाषांमध्ये वापरकर्त्यांना त्यांच्या भाषेत सोप्या, स्पष्ट आणि नैसर्गिक भाषेत उत्तर देतो.
-            मराठी प्रश्नांना मराठीत नेमके, साधे आणि निसर्गरम्य शब्द वापरून उत्तर दे.
-            जर इंग्रजीत विचारलं तर इंग्रजीत उत्तरे दे.
-            जर हिंदीत विचारलं तर हिंदीत उत्तरे दे.
-            """
+                system_message = """
+                तू एक मदत करणारा AI आहेस जो मराठी, हिंदी आणि इंग्रजी भाषांमध्ये वापरकर्त्यांना त्यांच्या भाषेत सोप्या, स्पष्ट आणि नैसर्गिक भाषेत उत्तर देतो.
+                मराठी प्रश्नांना मराठीत नेमके, साधे आणि निसर्गरम्य शब्द वापरून उत्तर दे.
+                जर इंग्रजीत विचारलं तर इंग्रजीत उत्तरे दे.
+                जर हिंदीत विचारलं तर हिंदीत उत्तरे दे.
+                """
 
-            response = client.chat.completions.create(
-                model="llama3-8b-8192",
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message}
-                ],
-                max_tokens=500,
-                temperature=0.7,
-            )
+                response = client.chat.completions.create(
+                    model="llama3-8b-8192",
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_message}
+                    ],
+                    max_tokens=500,
+                    temperature=0.7,
+                )
 
-            bot_reply = response.choices[0].message.content.strip()
+                bot_reply = response.choices[0].message.content.strip()
 
         except Exception as e:
-            print("❌ Groq API error:", e)
+            print("❌ Error:", e)
             bot_reply = "क्षमस्व! काहीतरी गडबड झाली आहे."
 
         payload = {
