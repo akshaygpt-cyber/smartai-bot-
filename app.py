@@ -1,77 +1,63 @@
-# app.py
-
+import os
 from flask import Flask, request
 import requests
-import os
+from groq import Groq
 from dotenv import load_dotenv
-import re
+from langdetect import detect
 
 load_dotenv()
 
 app = Flask(__name__)
 
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "mixtral-8x7b-32768"
 
+client = Groq(api_key=GROQ_API_KEY)
+
+# भाषा ओळखून योग्य उत्तर द्या
 def detect_language(text):
-    marathi_pattern = r'[\u0900-\u097F]'
-    hindi_words = ['क्या', 'कैसे', 'है', 'कौन', 'नमस्ते']
-    
-    if re.search(marathi_pattern, text):
-        return 'marathi'
-    elif any(word in text for word in hindi_words):
-        return 'hindi'
-    else:
-        return 'english'
-
-def get_reply_from_groq(user_message, language):
     try:
-        prompt = {
-            "marathi": f"तू एक मराठी सहाय्यक आहेस. वापरकर्त्याचा प्रश्न: {user_message}",
-            "hindi": f"तुम एक हिंदी सहायक हो। उपयोगकर्ता का प्रश्न: {user_message}",
-            "english": f"You are an English assistant. User asked: {user_message}"
-        }
+        lang = detect(text)
+        if lang.startswith("mr"):
+            return "Marathi"
+        elif lang.startswith("hi"):
+            return "Hindi"
+        else:
+            return "English"
+    except:
+        return "English"
 
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
+def generate_reply(prompt, language):
+    system_prompt = {
+        "Marathi": "तू एक बुद्धिमान मराठी सहाय्यक आहेस. वापरकर्त्याच्या प्रश्नांना स्पष्ट मराठीत उत्तर दे.",
+        "Hindi": "तुम एक बुद्धिमान हिंदी सहायक हो। उपयोगकर्ता के सवालों का स्पष्ट हिंदी में उत्तर दो।",
+        "English": "You are a smart assistant. Answer the user's questions clearly in English."
+    }[language]
 
-        data = {
-            "model": "mixtral-8x7b-32768",
-            "messages": [{"role": "user", "content": prompt[language]}],
-            "temperature": 0.7
-        }
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        model=GROQ_MODEL
+    )
+    return chat_completion.choices[0].message.content
 
-        response = requests.post(GROQ_API_URL, headers=headers, json=data)
-        result = response.json()
-        return result['choices'][0]['message']['content'].strip()
+@app.route('/')
+def home():
+    return 'Smart AI Bot is running!'
 
-    except Exception as e:
-        return "क्षमस्व! काहीतरी गडबड झाली."
-
-def send_message(chat_id, reply_text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": reply_text
-    }
-    requests.post(url, json=payload)
-
-@app.route("/webhook", methods=["POST"])
+@app.route('/webhook', methods=["POST"])
 def webhook():
     data = request.get_json()
-    try:
-        message = data["message"]["text"]
+    if "message" in data and "text" in data["message"]:
         chat_id = data["message"]["chat"]["id"]
-        language = detect_language(message)
-        reply = get_reply_from_groq(message, language)
-        send_message(chat_id, reply)
-    except Exception as e:
-        send_message(chat_id, "क्षमस्व! काहीतरी गडबड झाली.")
-    return "OK"
+        user_msg = data["message"]["text"]
+        user_lang = detect_language(user_msg)
+        reply = generate_reply(user_msg, user_lang)
 
-@app.route("/")
-def home():
-    return "Smart AI ChatBot is Running!"
+        send_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        requests.post(send_url, json={"chat_id": chat_id, "text": reply})
+
+    return "OK"
