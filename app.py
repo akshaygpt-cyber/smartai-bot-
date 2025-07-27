@@ -39,15 +39,17 @@ def webhook():
         user_message = data['message']['text']
 
         try:
-            # Detect language (optional usage, can be used to tweak prompt if needed)
+            # Detect user message language (optional)
             lang = detect(user_message)
 
-            # Create a prompt system message that suits the user language (optional)
-            system_message = (
-                "तू एक मदत करणारा AI आहेस जो मराठी, हिंदी आणि इंग्रजी भाषांमध्ये वापरकर्त्यांना त्यांच्या भाषेत उत्तर देतो."
-            )
+            # System prompt to guide AI to answer naturally in Marathi, Hindi or English
+            system_message = """
+            तू एक मदत करणारा AI आहेस जो मराठी, हिंदी आणि इंग्रजी भाषांमध्ये वापरकर्त्यांना त्यांच्या भाषेत सोप्या, स्पष्ट आणि नैसर्गिक भाषेत उत्तर देतो.
+            मराठी प्रश्नांना मराठीत नेमके, साधे आणि निसर्गरम्य शब्द वापरून उत्तर दे.
+            जर इंग्रजीत विचारलं तर इंग्रजीत उत्तरे दे.
+            जर हिंदीत विचारलं तर हिंदीत उत्तरे दे.
+            """
 
-            # Call Groq LLM chat completions
             response = client.chat.completions.create(
                 model="llama3-8b-8192",
                 messages=[
@@ -64,12 +66,13 @@ def webhook():
             print("❌ Error in Groq API call:", e)
             bot_reply = "क्षमस्व! काहीतरी गडबड झाली आहे."
 
-        # Send the bot reply back to Telegram chat
+        # Prepare payload and send reply to Telegram
         payload = {
             'chat_id': chat_id,
             'text': bot_reply,
             "parse_mode": "HTML"
         }
+
         try:
             requests.post(TELEGRAM_API_URL, json=payload)
         except Exception as e:
