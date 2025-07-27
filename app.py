@@ -1,63 +1,67 @@
-import os
 from flask import Flask, request
 import requests
-from groq import Groq
-from dotenv import load_dotenv
+import os
 from langdetect import detect
+from dotenv import load_dotenv
+from groq import Groq
 
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 
+# Get tokens from .env
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = "mixtral-8x7b-32768"
 
+# Initialize Groq client
 client = Groq(api_key=GROQ_API_KEY)
 
-# भाषा ओळखून योग्य उत्तर द्या
-def detect_language(text):
-    try:
-        lang = detect(text)
-        if lang.startswith("mr"):
-            return "Marathi"
-        elif lang.startswith("hi"):
-            return "Hindi"
-        else:
-            return "English"
-    except:
-        return "English"
+# Telegram API base URL
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-def generate_reply(prompt, language):
-    system_prompt = {
-        "Marathi": "तू एक बुद्धिमान मराठी सहाय्यक आहेस. वापरकर्त्याच्या प्रश्नांना स्पष्ट मराठीत उत्तर दे.",
-        "Hindi": "तुम एक बुद्धिमान हिंदी सहायक हो। उपयोगकर्ता के सवालों का स्पष्ट हिंदी में उत्तर दो।",
-        "English": "You are a smart assistant. Answer the user's questions clearly in English."
-    }[language]
-
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        model=GROQ_MODEL
-    )
-    return chat_completion.choices[0].message.content
-
+# Root route (for checking if bot is running)
 @app.route('/')
 def home():
-    return 'Smart AI Bot is running!'
+    return '✅ Smart AI Bot is Running!'
 
-@app.route('/webhook', methods=["POST"])
+# Webhook route for Telegram
+@app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
-    if "message" in data and "text" in data["message"]:
-        chat_id = data["message"]["chat"]["id"]
-        user_msg = data["message"]["text"]
-        user_lang = detect_language(user_msg)
-        reply = generate_reply(user_msg, user_lang)
 
-        send_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        requests.post(send_url, json={"chat_id": chat_id, "text": reply})
+    if 'message' in data and 'text' in data['message']:
+        chat_id = data['message']['chat']['id']
+        user_message = data['message']['text']
 
-    return "OK"
+        try:
+            # Detect user message language
+            lang = detect(user_message)
+
+            # Create reply using Groq LLM
+            response = client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[
+                    {"role": "system", "content": "तू एक मदत करणारा AI आहेस जो मराठी, हिंदी आणि इंग्रजी भाषांमध्ये वापरकर्त्यांना त्यांच्या भाषेत उत्तर देतो."},
+                    {"role": "user", "content": user_message}
+                ]
+            )
+
+            bot_reply = response.choices[0].message.content.strip()
+
+        except Exception as e:
+            print("❌ Error:", e)
+            bot_reply = "क्षमस्व! काहीतरी गडबड झाली आहे."
+
+        # Send reply to Telegram
+        payload = {
+            'chat_id': chat_id,
+            'text': bot_reply
+        }
+        requests.post(TELEGRAM_API_URL, json=payload)
+
+    return 'OK'
+
+# Run the Flask app
+if __name__ == '__main__':
+    app.run(debug=True)
