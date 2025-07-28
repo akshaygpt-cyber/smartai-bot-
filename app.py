@@ -1,66 +1,62 @@
-from flask import Flask, request
-import requests
 import os
+import requests
+from flask import Flask, request
+from groq import Groq
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+# 🗝️ Environment Variables
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+# 🔗 Telegram API URL
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
-# ✅ Home route for testing
-@app.route('/')
-def home():
-    return 'SmartAI is Live ✅'
+# 🤖 Groq Client Setup
+groq_client = Groq(api_key=GROQ_API_KEY)
 
-# ✅ Webhook route
-@app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
-def telegram_webhook():
-    data = request.get_json()
-    chat_id = data["message"]["chat"]["id"]
-    user_msg = data["message"]["text"]
-
-    # News API handling
-    if "बातमी" in user_msg.lower() or "news" in user_msg.lower():
-        news = get_latest_news()
-        reply = news if news else "क्षमस्व, सध्या बातम्या मिळू शकल्या नाहीत."
-    else:
-        reply = chat_with_groq(user_msg)
-
-    send_message(chat_id, reply)
-    return "OK"
-
-# ✅ Function: Get latest news
+# 📡 Get Latest News (मराठीत)
 def get_latest_news():
     url = f"https://newsapi.org/v2/top-headlines?country=in&language=mr&apiKey={NEWS_API_KEY}"
     response = requests.get(url)
-    if response.status_code == 200:
-        articles = response.json()["articles"][:3]
-        return "\n\n".join([f"📰 {a['title']}\n{a['url']}" for a in articles])
-    return None
+    articles = response.json().get("articles", [])
 
-# ✅ Function: Chat with Groq (LLaMA-3)
-def chat_with_groq(user_msg):
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": "llama3-8b-8192",
-        "messages": [{"role": "user", "content": user_msg}]
-    }
-    res = requests.post(GROQ_API_URL, headers=headers, json=data)
-    if res.status_code == 200:
-        return res.json()["choices"][0]["message"]["content"]
-    return "उत्तर मिळाले नाही. कृपया पुन्हा प्रयत्न करा."
+    if not articles:
+        return "माफ करा, सध्या कोणतीही बातमी उपलब्ध नाही."
 
-# ✅ Function: Send message back to Telegram
-def send_message(chat_id, text):
-    payload = {
-        "chat_id": chat_id,
-        "text": text
-    }
-    requests.post(TELEGRAM_API_URL, json=payload)
+    message = "🗞️ आजच्या महत्त्वाच्या बातम्या:\n\n"
+    for article in articles[:5]:
+        title = article.get("title", "")
+        message += f"• {title}\n"
+
+    return message.strip()
+
+# 🧠 Get GPT-based reply
+def generate_groq_reply(user_message):
+    chat_completion = groq_client.chat.completions.create(
+        messages=[{"role": "user", "content": user_message}],
+        model="mixtral-8x7b-32768",
+    )
+    return chat_completion.choices[0].message.content
+
+# 🚦 Webhook to receive Telegram messages
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+
+    if "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        user_message = data["message"].get("text", "")
+
+        # 📰 News detection
+        if any(word in user_message.lower() for word in ["घडामोडी", "बातमी", "news", "चालू"]:
+            reply = get_latest_news()
+        else:
+            reply = generate_groq_reply(user_message)
+
+        payload = {
+            "chat_id": chat_id,
+            "text": reply,
+            "parse_mode": "Markdown"
+        }
