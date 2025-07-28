@@ -5,58 +5,61 @@ from groq import Groq
 
 app = Flask(__name__)
 
-# 🗝️ Environment Variables
+# 🔐 Environment Variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
-# 🔗 Telegram API URL
+# 🤖 API Setup
+groq_client = Groq(api_key=GROQ_API_KEY)
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
-# 🤖 Groq Client Setup
-groq_client = Groq(api_key=GROQ_API_KEY)
-
-# 📡 Get Latest News (मराठीत)
+# 📰 Get latest news headlines
 def get_latest_news():
-    url = f"https://newsapi.org/v2/top-headlines?country=in&language=mr&apiKey={NEWS_API_KEY}"
+    url = f"https://newsapi.org/v2/top-headlines?country=in&apiKey={NEWS_API_KEY}"
     response = requests.get(url)
-    articles = response.json().get("articles", [])
+    data = response.json()
 
-    if not articles:
-        return "माफ करा, सध्या कोणतीही बातमी उपलब्ध नाही."
+    if data["status"] == "ok":
+        headlines = [article["title"] for article in data["articles"][:5]]
+        return "\n".join([f"🗞️ {title}" for title in headlines])
+    else:
+        return "सध्या चालू घडामोडी मिळाल्या नाहीत. नंतर पुन्हा प्रयत्न करा."
 
-    message = "🗞️ आजच्या महत्त्वाच्या बातम्या:\n\n"
-    for article in articles[:5]:
-        title = article.get("title", "")
-        message += f"• {title}\n"
-
-    return message.strip()
-
-# 🧠 Get GPT-based reply
-def generate_groq_reply(user_message):
-    chat_completion = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": user_message}],
-        model="mixtral-8x7b-32768",
+# 🧠 Generate response using LLaMA 3
+def generate_llama_response(user_message):
+    response = groq_client.chat.completions.create(
+        model="llama3-8b-8192",  # ✅ LLaMA 3 वापरणे
+        messages=[
+            {"role": "system", "content": "You are a helpful AI assistant that understands Marathi, Hindi, and English."},
+            {"role": "user", "content": user_message}
+        ]
     )
-    return chat_completion.choices[0].message.content
+    return response.choices[0].message.content.strip()
 
-# 🚦 Webhook to receive Telegram messages
+# 📩 Handle Telegram messages
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-
-    if "message" in data:
+    
+    if "message" in data and "text" in data["message"]:
         chat_id = data["message"]["chat"]["id"]
-        user_message = data["message"].get("text", "")
+        user_message = data["message"]["text"]
 
-        # 📰 News detection
-        if any(word in user_message.lower() for word in ["घडामोडी", "बातमी", "news", "चालू"]:
-            reply = get_latest_news()
+        # 👉 If message is about news
+        if any(word in user_message.lower() for word in ["news", "चालू घडामोडी", "बातम्या", "खबरें"]):
+            reply_text = get_latest_news()
         else:
-            reply = generate_groq_reply(user_message)
+            reply_text = generate_llama_response(user_message)
 
-        payload = {
+        # 📤 Send reply to Telegram
+        requests.post(TELEGRAM_API_URL, json={
             "chat_id": chat_id,
-            "text": reply,
-            "parse_mode": "Markdown"
-        }
+            "text": reply_text
+        })
+
+    return "ok"
+
+# 🏃 Run Flask app
+if __name__ == "__main__":
+    app.run(debug=True)
