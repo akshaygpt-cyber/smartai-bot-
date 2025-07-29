@@ -1,6 +1,6 @@
 flask
 requests
-groq
+groq==0.4.0
 langdetect
 pillow
 sympy
