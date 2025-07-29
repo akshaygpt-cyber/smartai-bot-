@@ -1,110 +1,84 @@
-import os
-import requests
 from flask import Flask, request
-from dotenv import load_dotenv
+import requests
+import os
 from langdetect import detect
-from googletrans import Translator
-from sympy import sympify
-from newspaper import Article
+from groq import Groq
 from PIL import Image
-from io import BytesIO
+from sympy import sympify
+from bs4 import BeautifulSoup
+from newspaper import Article
+from googletrans import Translator
 
-# ✅ सुरुवातीला Flask app define कर
-app = Flask(__name__)
-
-# Load environment variables
-load_dotenv()
+# ENV variables
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
+# Init
+app = Flask(__name__)
+client = Groq(api_key=GROQ_API_KEY)
 translator = Translator()
 
-# 🧠 GROQ API
-def ask_groq(prompt):
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "llama3-70b-8192",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.3
-    }
-    res = requests.post(url, headers=headers, json=payload)
-    return res.json()['choices'][0]['message']['content']
+# ✅ Home route for UptimeRobot
+@app.route('/')
+def home():
+    return 'SmartAI Bot is running!'
 
-# ➗ Math solver
-def solve_math(query):
-    try:
-        expr = sympify(query)
-        result = expr.evalf()
-        return f"🔢 गणिताचं उत्तर: {result}"
-    except:
-        return None
-
-# 📰 Extract article from URL
-def extract_article(url):
-    try:
-        article = Article(url)
-        article.download()
-        article.parse()
-        return f"📰 शीर्षक: {article.title}\n\n{article.text[:1000]}"
-    except:
-        return "❌ बातमी मिळवताना त्रुटी आली."
-
-# 🌐 Language detect & translate
-def detect_and_translate(text, target='en'):
-    try:
-        lang = detect(text)
-        translated = translator.translate(text, dest=target)
-        return translated.text
-    except:
-        return text
-
-# 📷 Get Telegram image URL
-def get_photo_url(file_id):
-    res = requests.get(f"{TELEGRAM_URL}/getFile?file_id={file_id}").json()
-    file_path = res['result']['file_path']
-    return f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
-
-# 📩 Telegram webhook
-@app.route('/', methods=['POST'])
+# ✅ Webhook route
+@app.route('/webhook', methods=["POST"])
 def webhook():
     data = request.get_json()
+    
+    if "message" not in data:
+        return "No message", 200
 
-    if 'message' in data:
-        chat_id = data['message']['chat']['id']
-        reply = "❓ काही उत्तर मिळालं नाही."
+    message = data["message"]
+    chat_id = message["chat"]["id"]
+    user_input = message.get("text", "")
 
-        # Handle photo
-        if 'photo' in data['message']:
-            file_id = data['message']['photo'][-1]['file_id']
-            image_url = get_photo_url(file_id)
-            reply = f"📷 फोटो मिळाला! पण कृपया प्रश्नसुद्धा लिहा.\n[Image]({image_url})"
+    # भाषेचा अंदाज
+    try:
+        lang = detect(user_input)
+    except:
+        lang = "en"
 
-        # Handle text
-        elif 'text' in data['message']:
-            text = data['message']['text']
-            math_result = solve_math(text)
-            if math_result:
-                reply = math_result
-            elif "http" in text:
-                reply = extract_article(text)
-            else:
-                reply = ask_groq(text)
+    # गणित सोल्यूशन
+    if any(op in user_input for op in ["+", "-", "*", "/", "^"]):
+        try:
+            result = sympify(user_input)
+            reply = f"उत्तर: {result}"
+        except:
+            reply = "गणित समजले नाही. कृपया पुन्हा लिहा."
+    
+    # बातम्या किंवा वेबसाईट लिंक process करणे
+    elif user_input.startswith("http"):
+        try:
+            article = Article(user_input)
+            article.download()
+            article.parse()
+            reply = f"📰 Title: {article.title}\n\n📝 Summary: {article.text[:1000]}"
+        except:
+            reply = "URL समजला नाही किंवा काही त्रुटी झाली."
 
-        # Send back reply
-        requests.post(f"{TELEGRAM_URL}/sendMessage", json={
-            "chat_id": chat_id,
-            "text": reply,
-            "parse_mode": "Markdown"
-        })
+    # AI उत्तर (Groq)
+    else:
+        prompt = user_input
+        try:
+            completion = client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[
+                    {"role": "system", "content": "तू एक उपयुक्त, अचूक आणि बहुभाषिक सहाय्यक आहेस."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            response = completion.choices[0].message.content
+            if lang != "en":
+                response = translator.translate(response, dest=lang).text
+            reply = response
+        except:
+            reply = "उत्तर देताना अडचण आली. पुन्हा प्रयत्न करा."
 
-    return "ok"
+    # Telegram reply
+    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    requests.post(telegram_url, json={"chat_id": chat_id, "text": reply})
 
-# 🔍 Default route to verify bot is running
-@app.route('/')
-def index():
-    return "🤖 AkshaySmartBot is Running!"
+    return "OK", 200
