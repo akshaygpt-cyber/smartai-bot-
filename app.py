@@ -9,16 +9,18 @@ from newspaper import Article
 from PIL import Image
 from io import BytesIO
 
-# Load env variables
+# ✅ सुरुवातीला Flask app define कर
+app = Flask(__name__)
+
+# Load environment variables
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-app = Flask(__name__)
 translator = Translator()
 
-# 🧠 GROQ API Function
+# 🧠 GROQ API
 def ask_groq(prompt):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
@@ -33,7 +35,7 @@ def ask_groq(prompt):
     res = requests.post(url, headers=headers, json=payload)
     return res.json()['choices'][0]['message']['content']
 
-# 🔍 Try solving math expressions
+# ➗ Math solver
 def solve_math(query):
     try:
         expr = sympify(query)
@@ -42,7 +44,7 @@ def solve_math(query):
     except:
         return None
 
-# 🗞️ Live News from any link
+# 📰 Extract article from URL
 def extract_article(url):
     try:
         article = Article(url)
@@ -50,9 +52,9 @@ def extract_article(url):
         article.parse()
         return f"📰 शीर्षक: {article.title}\n\n{article.text[:1000]}"
     except:
-        return "❌ बातमी घेताना त्रुटी आली."
+        return "❌ बातमी मिळवताना त्रुटी आली."
 
-# 🌍 भाषा ओळख व भाषांतर
+# 🌐 Language detect & translate
 def detect_and_translate(text, target='en'):
     try:
         lang = detect(text)
@@ -61,13 +63,13 @@ def detect_and_translate(text, target='en'):
     except:
         return text
 
-# 📷 फोटो Handle
+# 📷 Get Telegram image URL
 def get_photo_url(file_id):
     res = requests.get(f"{TELEGRAM_URL}/getFile?file_id={file_id}").json()
     file_path = res['result']['file_path']
     return f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
 
-# 💬 Telegram Webhook Handler
+# 📩 Telegram webhook
 @app.route('/', methods=['POST'])
 def webhook():
     data = request.get_json()
@@ -76,29 +78,24 @@ def webhook():
         chat_id = data['message']['chat']['id']
         reply = "❓ काही उत्तर मिळालं नाही."
 
-        # Handle Photo
+        # Handle photo
         if 'photo' in data['message']:
             file_id = data['message']['photo'][-1]['file_id']
             image_url = get_photo_url(file_id)
             reply = f"📷 फोटो मिळाला! पण कृपया प्रश्नसुद्धा लिहा.\n[Image]({image_url})"
 
-        # Handle Text
+        # Handle text
         elif 'text' in data['message']:
             text = data['message']['text']
-            lower_text = text.lower()
-
-            # गणित
             math_result = solve_math(text)
             if math_result:
                 reply = math_result
-            # चालू घडामोडी लिंक दिल्यास
             elif "http" in text:
                 reply = extract_article(text)
-            # सामान्य प्रश्न - LLM ला पाठवा
             else:
                 reply = ask_groq(text)
 
-        # Send response
+        # Send back reply
         requests.post(f"{TELEGRAM_URL}/sendMessage", json={
             "chat_id": chat_id,
             "text": reply,
@@ -107,7 +104,7 @@ def webhook():
 
     return "ok"
 
-# 🌐 Root Route
+# 🔍 Default route to verify bot is running
 @app.route('/')
 def index():
-    return "🤖 AkshaySmartBot is Live!"
+    return "🤖 AkshaySmartBot is Running!"
