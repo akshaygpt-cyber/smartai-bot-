@@ -4,3 +4,8 @@ gunicorn
 python-dotenv
 langdetect
 groq-python
+Pillow
+sympy
+beautifulsoup4
+newspaper3k
+googletrans==4.0.0rc1
