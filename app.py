@@ -1,84 +1,82 @@
-from flask import Flask, request
-import requests
-import os
-from langdetect import detect
+from flask import Flask, request, jsonify
 from groq import Groq
-from PIL import Image
-from sympy import sympify
-from bs4 import BeautifulSoup
-from newspaper import Article
+from langdetect import detect
 from googletrans import Translator
+from sympy import sympify, simplify
+from sympy.core.sympify import SympifyError
+from dotenv import load_dotenv
+import os
 
-# ENV variables
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+load_dotenv()
 
-# Init
 app = Flask(__name__)
-client = Groq(api_key=GROQ_API_KEY)
 translator = Translator()
 
-# ✅ Home route for UptimeRobot
-@app.route('/')
-def home():
-    return 'SmartAI Bot is running!'
+# Groq Client init
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ✅ Webhook route
-@app.route('/webhook', methods=["POST"])
-def webhook():
-    data = request.get_json()
-    
-    if "message" not in data:
-        return "No message", 200
+# Language names mapping
+LANG_MAP = {
+    'mr': 'mr',  # Marathi
+    'hi': 'hi',  # Hindi
+    'en': 'en',  # English
+}
 
-    message = data["message"]
-    chat_id = message["chat"]["id"]
-    user_input = message.get("text", "")
-
-    # भाषेचा अंदाज
+def detect_language(text):
     try:
-        lang = detect(user_input)
+        lang = detect(text)
+        return LANG_MAP.get(lang, 'en')
     except:
-        lang = "en"
+        return 'en'
 
-    # गणित सोल्यूशन
-    if any(op in user_input for op in ["+", "-", "*", "/", "^"]):
-        try:
-            result = sympify(user_input)
-            reply = f"उत्तर: {result}"
-        except:
-            reply = "गणित समजले नाही. कृपया पुन्हा लिहा."
-    
-    # बातम्या किंवा वेबसाईट लिंक process करणे
-    elif user_input.startswith("http"):
-        try:
-            article = Article(user_input)
-            article.download()
-            article.parse()
-            reply = f"📰 Title: {article.title}\n\n📝 Summary: {article.text[:1000]}"
-        except:
-            reply = "URL समजला नाही किंवा काही त्रुटी झाली."
+def solve_math_expression(expression):
+    try:
+        expr = sympify(expression)
+        return str(simplify(expr))
+    except SympifyError:
+        return None
 
-    # AI उत्तर (Groq)
-    else:
-        prompt = user_input
-        try:
-            completion = client.chat.completions.create(
-                model="llama3-8b-8192",
-                messages=[
-                    {"role": "system", "content": "तू एक उपयुक्त, अचूक आणि बहुभाषिक सहाय्यक आहेस."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            response = completion.choices[0].message.content
-            if lang != "en":
-                response = translator.translate(response, dest=lang).text
-            reply = response
-        except:
-            reply = "उत्तर देताना अडचण आली. पुन्हा प्रयत्न करा."
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "Smart गणित ChatBot API चालू आहे 🔥"}), 200
 
-    # Telegram reply
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    requests.post(telegram_url, json={"chat_id": chat_id, "text": reply})
+@app.route("/ask", methods=["POST"])
+def ask():
+    data = request.get_json()
+    user_input = data.get("query", "")
 
-    return "OK", 200
+    if not user_input:
+        return jsonify({"error": "Query missing"}), 400
+
+    lang = detect_language(user_input)
+
+    # Sympy try
+    sympy_result = solve_math_expression(user_input)
+    if sympy_result:
+        translated = translator.translate(f"उत्तर: {sympy_result}", dest=lang).text
+        return jsonify({"result": translated, "method": "sympy"})
+
+    # Else fallback to Groq LLaMA-3
+    messages = [
+        {
+            "role": "system",
+            "content": "तू एक बुद्धिमान गणित सहाय्यक आहेस. वापरकर्त्याचे प्रश्न मराठी, हिंदी किंवा इंग्रजी भाषेत असू शकतात. तू स्पष्ट आणि अचूक उत्तर देतोस, आणि गणित पद्धत देखील सांगतोस."
+        },
+        {
+            "role": "user",
+            "content": user_input
+        }
+    ]
+
+    try:
+        chat_completion = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=messages
+        )
+        answer = chat_completion.choices[0].message.content
+        return jsonify({"result": answer, "method": "groq"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True)
