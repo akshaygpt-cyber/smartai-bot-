@@ -1,10 +1,11 @@
 flask
 requests
 groq==0.4.0
+gunicorn
+duckduckgo-search
 langdetect
 pillow
 sympy
 beautifulsoup4
 newspaper3k
 googletrans==4.0.0-rc1
-gunicorn
