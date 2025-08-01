@@ -1,82 +1,59 @@
-from flask import Flask, request, jsonify
-from groq import Groq
-from langdetect import detect
-from googletrans import Translator
-from sympy import sympify, simplify
-from sympy.core.sympify import SympifyError
-from dotenv import load_dotenv
+from flask import Flask, request
+import requests
 import os
+from groq import Groq
+from duckduckgo_search import DDGS
+from dotenv import load_dotenv
 
 load_dotenv()
-
 app = Flask(__name__)
-translator = Translator()
 
-# Groq Client init
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = "mixtral-8x7b-32768"
 
-# Language names mapping
-LANG_MAP = {
-    'mr': 'mr',  # Marathi
-    'hi': 'hi',  # Hindi
-    'en': 'en',  # English
-}
+client = Groq(api_key=GROQ_API_KEY)
 
-def detect_language(text):
-    try:
-        lang = detect(text)
-        return LANG_MAP.get(lang, 'en')
-    except:
-        return 'en'
+def search_web(query):
+    with DDGS() as ddgs:
+        results = ddgs.text(query, max_results=3)
+        return "\n".join([r["title"] + ": " + r["href"] for r in results])
 
-def solve_math_expression(expression):
-    try:
-        expr = sympify(expression)
-        return str(simplify(expr))
-    except SympifyError:
-        return None
+def ask_ai(query, search_info):
+    prompt = f"""User asked: {query}
+Here is some live web search information:
+{search_info}
 
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"message": "Smart गणित ChatBot API चालू आहे 🔥"}), 200
+Based on this, give a helpful, short, and updated answer:"""
 
-@app.route("/ask", methods=["POST"])
-def ask():
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    requests.post(url, json=payload)
+
+@app.route('/', methods=['POST'])
+def webhook():
     data = request.get_json()
-    user_input = data.get("query", "")
+    if 'message' in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "")
 
-    if not user_input:
-        return jsonify({"error": "Query missing"}), 400
+        # Real-time search + AI Answer
+        search_data = search_web(text)
+        reply = ask_ai(text, search_data)
 
-    lang = detect_language(user_input)
+        send_message(chat_id, reply)
+    return 'ok'
 
-    # Sympy try
-    sympy_result = solve_math_expression(user_input)
-    if sympy_result:
-        translated = translator.translate(f"उत्तर: {sympy_result}", dest=lang).text
-        return jsonify({"result": translated, "method": "sympy"})
+@app.route('/')
+def index():
+    return "🤖 SmartAI with Real-Time Search is Running!"
 
-    # Else fallback to Groq LLaMA-3
-    messages = [
-        {
-            "role": "system",
-            "content": "तू एक बुद्धिमान गणित सहाय्यक आहेस. वापरकर्त्याचे प्रश्न मराठी, हिंदी किंवा इंग्रजी भाषेत असू शकतात. तू स्पष्ट आणि अचूक उत्तर देतोस, आणि गणित पद्धत देखील सांगतोस."
-        },
-        {
-            "role": "user",
-            "content": user_input
-        }
-    ]
-
-    try:
-        chat_completion = client.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=messages
-        )
-        answer = chat_completion.choices[0].message.content
-        return jsonify({"result": answer, "method": "groq"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
