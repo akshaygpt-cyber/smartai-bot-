@@ -17,7 +17,6 @@ client = Groq(api_key=GROQ_API_KEY)
 
 USERS_FILE = 'users.json'
 
-# --- User Storage Functions ---
 def load_users():
     try:
         with open(USERS_FILE, 'r') as f:
@@ -35,12 +34,16 @@ def add_user(user_id):
         users.append(user_id)
         save_users(users)
 
-# --- Existing Functions ---
-
 def search_web(query):
+    keywords = ['news', 'latest', 'update', 'current', 'breaking']
+    if any(word in query.lower() for word in keywords):
+        search_term = f"latest news about {query}"
+    else:
+        search_term = query
+
     with DDGS() as ddgs:
-        results = ddgs.text(query, max_results=3)
-        return "\n".join([r["title"] + ": " + r["href"] for r in results])
+        results = ddgs.text(search_term, max_results=3)
+        return "\n".join([f"{r['title']}: {r['href']}" for r in results])
 
 def ask_ai(query, search_info):
     prompt = f"""User asked: {query}
@@ -60,32 +63,28 @@ def send_message(chat_id, text):
     payload = {"chat_id": chat_id, "text": text}
     requests.post(url, json=payload)
 
-@app.route('/', methods=['POST'])
+@app.route('/', methods=['GET', 'POST'])
 def webhook():
-    data = request.get_json()
-    if 'message' in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
-        user_id = data["message"]["from"]["id"]
+    if request.method == 'POST':
+        data = request.get_json()
+        if 'message' in data:
+            chat_id = data["message"]["chat"]["id"]
+            text = data["message"].get("text", "")
+            user_id = data["message"]["from"]["id"]
 
-        # Save user_id for counting
-        add_user(user_id)
+            add_user(user_id)
 
-        # Check if user asked for /users command
-        if text == "/users":
-            users = load_users()
-            reply = f"सध्या {len(users)} युजर्स माझा बोट वापरत आहेत."
-        else:
-            # Real-time search + AI Answer
-            search_data = search_web(text)
-            reply = ask_ai(text, search_data)
+            if text == "/users":
+                users = load_users()
+                reply = f"सध्या {len(users)} युजर्स माझा बोट वापरत आहेत."
+            else:
+                search_data = search_web(text)
+                reply = ask_ai(text, search_data)
 
-        send_message(chat_id, reply)
-    return 'ok'
-
-@app.route('/')
-def index():
-    return "🤖 SmartAI with Real-Time Search is Running!"
+            send_message(chat_id, reply)
+        return 'ok'
+    else:
+        return "🤖 SmartAI with Real-Time Search is Running!"
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
