@@ -1,90 +1,40 @@
-from flask import Flask, request
-import requests
 import os
-import json
-from groq import Groq
-from duckduckgo_search import DDGS
-from dotenv import load_dotenv
+import requests
+from flask import Flask, request
 
-load_dotenv()
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+GROQ_KEY = os.getenv("GROQ_API_KEY")
+
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = "mixtral-8x7b-32768"
+def groq_chat(prompt):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"}
+    data = {
+        "model": "llama-3.1-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.4,
+    }
+    r = requests.post(url, headers=headers, json=data)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
 
-client = Groq(api_key=GROQ_API_KEY)
-
-USERS_FILE = 'users.json'
-
-def load_users():
-    try:
-        with open(USERS_FILE, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-
-def save_users(users):
-    with open(USERS_FILE, 'w') as f:
-        json.dump(users, f)
-
-def add_user(user_id):
-    users = load_users()
-    if user_id not in users:
-        users.append(user_id)
-        save_users(users)
-
-def search_web(query):
-    keywords = ['news', 'latest', 'update', 'current', 'breaking']
-    if any(word in query.lower() for word in keywords):
-        search_term = f"latest news about {query}"
-    else:
-        search_term = query
-
-    with DDGS() as ddgs:
-        results = ddgs.text(search_term, max_results=3)
-        return "\n".join([f"{r['title']}: {r['href']}" for r in results])
-
-def ask_ai(query, search_info):
-    prompt = f"""User asked: {query}
-Here is some live web search information:
-{search_info}
-
-Based on this, give a helpful, short, and updated answer:"""
-
-    response = client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
-
-def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload)
-
-@app.route('/', methods=['GET', 'POST'])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    if request.method == 'POST':
-        data = request.get_json()
-        if 'message' in data:
-            chat_id = data["message"]["chat"]["id"]
-            text = data["message"].get("text", "")
-            user_id = data["message"]["from"]["id"]
+    update = request.get_json()
+    if "message" in update and "text" in update["message"]:
+        chat_id = update["message"]["chat"]["id"]
+        text = update["message"]["text"]
+        reply = groq_chat(text)
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": reply}
+        )
+    return "ok"
 
-            add_user(user_id)
+@app.route("/")
+def home():
+    return "Puch AI Free Clone is running!"
 
-            if text == "/users":
-                users = load_users()
-                reply = f"सध्या {len(users)} युजर्स माझा बोट वापरत आहेत."
-            else:
-                search_data = search_web(text)
-                reply = ask_ai(text, search_data)
-
-            send_message(chat_id, reply)
-        return 'ok'
-    else:
-        return "🤖 SmartAI with Real-Time Search is Running!"
-
-if __name__ == '__main__':
-    app.run()
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
